@@ -6,8 +6,13 @@ const harness_statuses = ['OK', 'ERROR', 'TIMEOUT'];
 const subtest_statuses = ['PASS', 'FAIL', 'TIMEOUT', 'NOTRUN'];
 
 async function closeAllPages(browser) {
-  const pages = await browser.pages();
-  await Promise.all(pages.map(page => page.close()));
+  try {
+    const pages = await browser.pages();
+    await Promise.all(pages.map(page => page.close()));
+  } catch(e) {
+    //console.error(e);
+    // happens when running html/
+  }
 }
 
 async function runSingleTest(browser, url, timeout) {
@@ -20,7 +25,7 @@ async function runSingleTest(browser, url, timeout) {
 
     // race timeout and test being done
     const timeout_id = setTimeout(() => {
-      resolve({ status: 'TIMEOUT' });
+      resolve({ status: harness_statuses.indexOf('TIMEOUT') }); // lol
     }, timeout * 1000);
 
     // we need a message channel for the page to sent results or
@@ -88,8 +93,7 @@ async function run() {
       } else {
         test_url = `http://web-platform.test:8000${test}`;
       }
-      let timeout = info.timeout === 'long' ? 10 : 60;
-      //timeout /= 10;
+      let timeout = info.timeout === 'long' ? 60 : 10;
       const results = await runSingleTest(browser, test_url, timeout);
       // throw on the same (not known by runSingleTest)
       results.name = test;
