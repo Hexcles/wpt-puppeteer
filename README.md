@@ -1,5 +1,6 @@
+Depends on testharnessreport.js from https://github.com/foolip/wpt/tree/wpt-puppeteer.
+
 Things that aren't easy:
  - Installing web-platform.test certs
  - Installing Ahem font
 
-Does this even work for Chrome/Firefox for macOS? How? (The code I wrote is for Safari.)
