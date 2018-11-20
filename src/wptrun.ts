@@ -1,46 +1,117 @@
-const fs = require('fs');
-const puppeteer = require('puppeteer');
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as puppeteer from 'puppeteer';
+import { ManifestReader } from './manifest';
 
-// Must match TestsStatus.statuses and Test.statuses.
-const harness_statuses = ['OK', 'ERROR', 'TIMEOUT'];
-const subtest_statuses = ['PASS', 'FAIL', 'TIMEOUT', 'NOTRUN'];
+// Must match testharness.js.
+enum TestsStatus {
+  OK = 0,
+  ERROR = 1,
+  TIMEOUT = 2
+}
 
-async function closeAllPages(browser) {
+enum TestStatus {
+  PASS = 0,
+  FAIL = 1,
+  TIMEOUT = 2,
+  NOTRUN = 3
+}
+
+// Must match testharnessreport.js.
+interface RawResult {
+  status: TestsStatus,
+  message?: string | null,
+  stack?: any | null,
+  duration?: number,
+  subtests?: Array<RawSubtestResult> | null,
+}
+
+interface RawSubtestResult {
+  name: string,
+  status: TestStatus,
+  message?: string | null,
+  stack?: any | null,
+}
+
+class Result implements RawResult {
+  test: string;
+  status: TestsStatus;
+  message?: string;
+  duration?: number;
+  // Do not include stack in report.
+  subtests: Array<RawSubtestResult> = [];
+
+  constructor(test: string, results: RawResult) {
+    this.test = test;
+    this.status = results.status;
+    if (results.message) {
+      this.message = results.message;
+    }
+    if (results.duration) {
+      this.duration = results.duration;
+    }
+    if (results.subtests) {
+      for (const r of results.subtests) {
+        this.subtests.push(r);
+      }
+    }
+  }
+
+  toJSON(): Object {
+    return Object.assign({}, this, {status: TestsStatus[this.status]})
+  }
+}
+
+class SubtestResult implements RawSubtestResult {
+  name: string;
+  status: TestStatus;
+  message?: string;
+  // Do not include stack in report.
+
+  constructor(result: RawSubtestResult) {
+    this.name = result.name;
+    this.status = result.status;
+    if (result.message) {
+      this.message = result.message;
+    }
+  }
+
+  toJSON(): Object {
+    return Object.assign({}, this, {status: TestStatus[this.status]})
+  }
+}
+
+const default_wpt_dir = path.join(os.homedir(), 'github', 'wpt')
+
+async function closeAllPages(browser: puppeteer.Browser) {
   try {
     const pages = await browser.pages();
     await Promise.all(pages.map(page => page.close()));
   } catch(e) {
-    //console.error(e);
-    // happens when running html/
+    // TODO: happens when running html/
+    console.error(e);
   }
 }
 
-async function runSingleTest(browser, url, timeout) {
+async function runSingleTest(browser: puppeteer.Browser, url: string, timeout: number): Promise<RawResult> {
   // run the test in a new page. no parallel tests in one browser instance
   await closeAllPages(browser);
   const page = await browser.newPage();
 
-  const done = new Promise((resolve, reject) => {
+  const done = new Promise<RawResult>(async (resolve, reject) => {
     const start_ms = Date.now();
 
     // race timeout and test being done
     const timeout_id = setTimeout(() => {
-      resolve({ status: harness_statuses.indexOf('TIMEOUT') }); // lol
+      resolve({ status: TestsStatus.TIMEOUT }); // lol
     }, timeout * 1000);
 
-    // we need a message channel for the page to sent results or
-    // testdriver.js commands to us. use console.trace for this.
-    // TODO: don't get confused by console/ tests.
-    page.on('console', msg => {
-      if (msg.type() != 'trace') {
-        return;
-      }
-      const end_ms = Date.now();
-      const duration = end_ms - start_ms;
+    await page.exposeFunction("_wptrunner_finish", (result: RawResult) => {
       clearTimeout(timeout_id);
-      const results = JSON.parse(msg.text());
-      //results.duration = duration;
-      resolve(results);
+      const end_ms = Date.now();
+      result.duration = end_ms - start_ms;
+      resolve(result);
     });
   });
 
@@ -50,67 +121,79 @@ async function runSingleTest(browser, url, timeout) {
   return done;
 }
 
+function shouldRun(test: string, testPrefixes: Array<string>) : boolean {
+  for (const testPrefix of testPrefixes) {
+    if (test.startsWith(testPrefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function run() {
-  const wptDir = process.argv[2];
-  let testPrefix = process.argv[3];
+  // TODO: Make this a command-line flag.
+  const wptDir = default_wpt_dir;
+  // argv[0]=node, argv[1]=script
+  let testPrefixes = process.argv.slice(2);
 
-  if (!testPrefix) {
-    process.exit(1);
+  if (testPrefixes.length === 0) {
+    testPrefixes.push('');
   }
 
-  if (!testPrefix.startsWith('/')) {
-    testPrefix = `/${testPrefix}`;
+  for (let i = 0; i < testPrefixes.length; i++) {
+    if (!testPrefixes[i].startsWith('/')) {
+      testPrefixes[i] = '/' + testPrefixes[i];
+    }
   }
+
+  const manifestReader = new ManifestReader(path.join(wptDir, 'MANIFEST.json'));
+  const manifest = manifestReader.manifest;
 
   const browser = await puppeteer.launch({
     //executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
     //headless: false,
     defaultViewport: {
-        width: 600,
+        width: 800,
         height: 600,
     }
   });
 
-  const manifest = JSON.parse(fs.readFileSync(`${wptDir}/MANIFEST.json`));
-
-  const report = [];
+  const results: Array<Result> = [];
 
   for (const [file, tests] of Object.entries(manifest.items.testharness)) {
     for (const [test, info] of tests) {
-      if (info.jsshell) {
+      // Decide whether to run the test.
+      if (info.jsshell || !shouldRun(test, testPrefixes)) {
         continue;
       }
-      if (!test.startsWith(testPrefix)) {
-        continue;
-      }
+
+      // Setup
       if (info.testdriver) {
         // TODO: communicate!
       }
-      let use_https = test.includes('.https.') || test.includes('.serviceworker.');
-      let test_url;
-      if (use_https) {
-        test_url = `https://web-platform.test:8443${test}`;
-      } else {
-        test_url = `http://web-platform.test:8000${test}`;
-      }
-      let timeout = info.timeout === 'long' ? 60 : 10;
-      const results = await runSingleTest(browser, test_url, timeout);
-      // throw on the same (not known by runSingleTest)
-      results.name = test;
-      // convert status ints to strings
-      results.status = harness_statuses[results.status];
-      console.log(`${results.status} ${results.name}`);
-      if (results.subtests) {
-        for (const subtest of results.subtests) {
-          subtest.status = subtest_statuses[subtest.status];
+      // TODO: verify the condition.
+      const use_https = test.includes('.https.') || test.includes('.serviceworker.');
+      // TODO: verify the port numbers.
+      const test_url = use_https ?
+        `https://web-platform.test:8443${test}`:
+        `http://web-platform.test:8000${test}`;
+      // TODO: verify the timeout & apply timeout multipler.
+      const timeout = info.timeout === 'long' ? 60 : 10;
+
+      const rawResult = await runSingleTest(browser, test_url, timeout);
+      let result = new Result(test, rawResult);
+      results.push(result);
+
+      console.log(`${TestsStatus[result.status]} ${result.test}`);
+      if (result.subtests) {
+        for (const subtest of result.subtests) {
           console.log(`  ${subtest.status} ${subtest.name}`);
         }
       }
-      report.push(results);
     }
   }
 
-  fs.writeFileSync('wptreport.json', JSON.stringify(report, null, 1) + '\n');
+  fs.writeFileSync('wptreport.json', JSON.stringify({"results": results}) + '\n');
 
   process.exit(0);
 }
