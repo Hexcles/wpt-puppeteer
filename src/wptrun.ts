@@ -22,6 +22,13 @@ enum TestStatus {
   NOTRUN = 3
 }
 
+const HarnessTimeout = {
+  'normal': 10000,
+  'long': 60000,
+}
+
+const ExternalTimeoutMultiplier = 2;
+
 // Must match testharnessreport.js.
 interface RawResult {
   status: TestsStatus,
@@ -88,42 +95,51 @@ class SubtestResult implements RawSubtestResult {
 
 const default_wpt_dir = path.join(os.homedir(), 'github', 'wpt')
 
-async function closeAllPages(browser: puppeteer.Browser) {
-  try {
-    const pages = await browser.pages();
-    await Promise.all(pages.map(page => page.close()));
-  } catch(e) {
-    // TODO: happens when running html/
-    logger.error(e);
+async function getNewPage(browser: puppeteer.Browser) {
+  const oldPages = await browser.pages();
+  // Create a new page before closing the old ones to prevent the browser from exiting.
+  const newPage = await browser.newPage();
+  await Promise.all(oldPages.map(p => p.close()));
+  return newPage;
+}
+
+class RunnerController {
+  private timeout_id?: NodeJS.Timeout;
+  private start_ms?: number;
+  private resolve?: (result: RawResult) => void;
+
+  start(timeout: number, resolve: (result: RawResult) => void) {
+    this.resolve = resolve;
+    this.timeout_id = setTimeout(() => {
+      this.resolve!({ status: TestsStatus.TIMEOUT });
+    }, timeout);
+    this.start_ms = Date.now();
+  }
+
+  finish(result: RawResult) {
+    if (this.timeout_id) {
+      clearTimeout(this.timeout_id);
+    }
+    if (this.start_ms) {
+      result.duration = Date.now() - this.start_ms;
+    }
+    logger.debug(result);
+    if (this.resolve) {
+      this.resolve(result);
+    }
   }
 }
 
-async function runSingleTest(browser: puppeteer.Browser, url: string, timeout: number): Promise<RawResult> {
-  // run the test in a new page. no parallel tests in one browser instance
-  await closeAllPages(browser);
-  const page = await browser.newPage();
+async function runSingleTest(browser: puppeteer.Browser, url: string, externalTimeout: number): Promise<RawResult> {
+  const page = await getNewPage(browser);
+  const controller = new RunnerController;
 
-  const done = new Promise<RawResult>(async (resolve, reject) => {
-    const start_ms = Date.now();
+  await page.exposeFunction("_wptrunner_finish", controller.finish.bind(controller));
 
-    // race timeout and test being done
-    const timeout_id = setTimeout(() => {
-      resolve({ status: TestsStatus.TIMEOUT }); // lol
-    }, timeout * 1000);
-
-    await page.exposeFunction("_wptrunner_finish", (result: RawResult) => {
-      clearTimeout(timeout_id);
-      const end_ms = Date.now();
-      result.duration = end_ms - start_ms;
-      logger.debug(result);
-      resolve(result);
-    });
+  return new Promise<RawResult>(async (resolve, reject) => {
+    controller.start(externalTimeout, resolve);
+    page.goto(url);
   });
-
-  // TODO: make this not hang if the page hangs when loading
-  await page.goto(url);
-
-  return done;
 }
 
 function shouldRun(test: string, testPrefixes: Array<string>) : boolean {
@@ -180,16 +196,15 @@ async function run() {
       if (info.testdriver) {
         // TODO: communicate!
       }
-      // TODO: verify the condition.
       const use_https = test.includes('.https.') || test.includes('.serviceworker.');
-      // TODO: verify the port numbers.
+      // These are the default port numbers.
       const test_url = use_https ?
         `https://web-platform.test:8443${test}`:
         `http://web-platform.test:8000${test}`;
       // TODO: verify the timeout & apply timeout multipler.
-      const timeout = info.timeout === 'long' ? 60 : 10;
+      const externalTimeout = ExternalTimeoutMultiplier * (HarnessTimeout[info.timeout || 'normal']);
 
-      const rawResult = await runSingleTest(browser, test_url, timeout);
+      const rawResult = await runSingleTest(browser, test_url, externalTimeout);
       const result = new Result(test, rawResult);
       logger.debug(result);
       results.push(result);
@@ -204,8 +219,7 @@ async function run() {
   }
 
   fs.writeFileSync('wptreport.json', JSON.stringify({"results": results}) + '\n');
-
-  //process.exit(0);
+  browser.close();
 }
 
 run();

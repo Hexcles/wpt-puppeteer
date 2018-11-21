@@ -23,11 +23,16 @@ type Reference = [string /* ref_url */, string /* condition */];
 
 interface Extras {
   [key: string]: any,
-  timeout?: string,
+  timeout?: Timeout,
   testdriver?: boolean,
   jsshell?: boolean,
   viewport_size?: any,
   dpi?: any
+}
+
+enum Timeout {
+  long = "long",
+  normal = "normal"
 }
 
 export class ManifestReader {
