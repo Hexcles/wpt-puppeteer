@@ -1,8 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
 import puppeteer from 'puppeteer';
+
 import { ManifestReader } from './manifest';
+import { Logger } from './util';
+const logger = new Logger('wptrun');
 
 // Must match testharness.js.
 enum TestsStatus {
@@ -90,7 +94,7 @@ async function closeAllPages(browser: puppeteer.Browser) {
     await Promise.all(pages.map(page => page.close()));
   } catch(e) {
     // TODO: happens when running html/
-    console.error(e);
+    logger.error(e);
   }
 }
 
@@ -111,6 +115,7 @@ async function runSingleTest(browser: puppeteer.Browser, url: string, timeout: n
       clearTimeout(timeout_id);
       const end_ms = Date.now();
       result.duration = end_ms - start_ms;
+      logger.debug(result);
       resolve(result);
     });
   });
@@ -151,7 +156,7 @@ async function run() {
 
   const browser = await puppeteer.launch({
     //executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    //headless: false,
+    headless: false,
     defaultViewport: {
         width: 800,
         height: 600,
@@ -181,13 +186,14 @@ async function run() {
       const timeout = info.timeout === 'long' ? 60 : 10;
 
       const rawResult = await runSingleTest(browser, test_url, timeout);
-      let result = new Result(test, rawResult);
+      const result = new Result(test, rawResult);
+      logger.debug(result);
       results.push(result);
 
-      console.log(`${TestsStatus[result.status]} ${result.test}`);
+      logger.log(`${TestsStatus[result.status]} ${result.test}`);
       if (result.subtests) {
         for (const subtest of result.subtests) {
-          console.log(`  ${subtest.status} ${subtest.name}`);
+          logger.log(`  ${TestStatus[subtest.status]} ${subtest.name}`);
         }
       }
     }
