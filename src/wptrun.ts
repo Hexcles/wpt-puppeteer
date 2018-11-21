@@ -44,7 +44,7 @@ class Result implements RawResult {
   message?: string;
   duration?: number;
   // Do not include stack in report.
-  subtests: Array<RawSubtestResult> = [];
+  subtests: Array<SubtestResult> = [];
 
   constructor(test: string, results: RawResult) {
     this.test = test;
@@ -57,7 +57,7 @@ class Result implements RawResult {
     }
     if (results.subtests) {
       for (const r of results.subtests) {
-        this.subtests.push(r);
+        this.subtests.push(new SubtestResult(r));
       }
     }
   }
@@ -156,7 +156,11 @@ async function run() {
 
   const browser = await puppeteer.launch({
     //executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+    // Without this, serviceworker tests still fail because of HTTPS errors.
+    args: ['--ignore-certificate-errors'],
     headless: false,
+    ignoreHTTPSErrors: true,
+    // This only resizes the viewport, not the window.
     defaultViewport: {
         width: 800,
         height: 600,
@@ -201,7 +205,7 @@ async function run() {
 
   fs.writeFileSync('wptreport.json', JSON.stringify({"results": results}) + '\n');
 
-  process.exit(0);
+  //process.exit(0);
 }
 
 run();
