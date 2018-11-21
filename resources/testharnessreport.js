@@ -1,5 +1,4 @@
-/* global add_completion_callback */
-/* global setup */
+/* global add_completion_callback, _wptrunner_finish */
 
 /*
  * This file is intended for vendors to implement code needed to integrate
@@ -17,18 +16,15 @@
 (function() {
 
 function dump_test_results(tests, status) {
-    let report = {
-        status: status.status,
-        message: status.message || undefined,
-        subtests: tests.map(t => {
-            return {
-                name: t.name,
-                status: t.status,
-                message: t.message || undefined,
-            }
-        }),
-    };
-    console.trace(JSON.stringify(report));
+    let test_results = tests.map(function(x) {
+        return {name:x.name, status:x.status, message:x.message, stack:x.stack}
+    });
+    let data = {subtests:test_results,
+                status: status.status,
+                message: status.message,
+                stack: status.stack};
+    console.log(data);
+    _wptrunner_finish(data);
 }
 
 add_completion_callback(dump_test_results);
