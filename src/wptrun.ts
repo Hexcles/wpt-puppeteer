@@ -1,57 +1,59 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
-import puppeteer from 'puppeteer';
+import puppeteer from "puppeteer";
 
-import { ManifestReader } from './manifest';
-import { Logger } from './util';
-const logger = new Logger('wptrun');
+import { ManifestReader } from "./manifest";
+import { Logger } from "./util";
+const logger = new Logger("wptrun");
+
+const DEFAULT_WPT_DIR = path.join(os.homedir(), "github", "wpt");
 
 // Must match testharness.js.
 enum TestsStatus {
   OK = 0,
   ERROR = 1,
-  TIMEOUT = 2
+  TIMEOUT = 2,
 }
 
 enum TestStatus {
   PASS = 0,
   FAIL = 1,
   TIMEOUT = 2,
-  NOTRUN = 3
+  NOTRUN = 3,
 }
 
 const HarnessTimeout = {
-  'normal': 10000,
-  'long': 60000,
-}
+  long: 60000,
+  normal: 10000,
+};
 
 const ExternalTimeoutMultiplier = 2;
 
 // Must match testharnessreport.js.
 interface RawResult {
-  status: TestsStatus,
-  message?: string | null,
-  stack?: any | null,
-  duration?: number,
-  subtests?: Array<RawSubtestResult> | null,
+  status: TestsStatus;
+  message?: string | null;
+  stack?: any | null;
+  duration?: number;
+  subtests?: RawSubtestResult[] | null;
 }
 
 interface RawSubtestResult {
-  name: string,
-  status: TestStatus,
-  message?: string | null,
-  stack?: any | null,
+  name: string;
+  status: TestStatus;
+  message?: string | null;
+  stack?: any | null;
 }
 
 class Result implements RawResult {
-  test: string;
-  status: TestsStatus;
-  message?: string;
-  duration?: number;
+  public test: string;
+  public status: TestsStatus;
+  public message?: string;
+  public duration?: number;
   // Do not include stack in report.
-  subtests: Array<SubtestResult> = [];
+  public subtests: SubtestResult[] = [];
 
   constructor(test: string, results: RawResult) {
     this.test = test;
@@ -69,15 +71,15 @@ class Result implements RawResult {
     }
   }
 
-  toJSON(): Object {
-    return Object.assign({}, this, {status: TestsStatus[this.status]})
+  public toJSON(): object {
+    return Object.assign({}, this, {status: TestsStatus[this.status]});
   }
 }
 
 class SubtestResult implements RawSubtestResult {
-  name: string;
-  status: TestStatus;
-  message?: string;
+  public name: string;
+  public status: TestStatus;
+  public message?: string;
   // Do not include stack in report.
 
   constructor(result: RawSubtestResult) {
@@ -88,51 +90,49 @@ class SubtestResult implements RawSubtestResult {
     }
   }
 
-  toJSON(): Object {
-    return Object.assign({}, this, {status: TestStatus[this.status]})
+  public toJSON(): object {
+    return Object.assign({}, this, {status: TestStatus[this.status]});
   }
 }
-
-const default_wpt_dir = path.join(os.homedir(), 'github', 'wpt')
 
 async function getNewPage(browser: puppeteer.Browser) {
   const oldPages = await browser.pages();
   // Create a new page before closing the old ones to prevent the browser from exiting.
   const newPage = await browser.newPage();
-  await Promise.all(oldPages.map(p => p.close()));
+  await Promise.all(oldPages.map((p) => p.close()));
   return newPage;
 }
 
 class RunnerController {
-  private timeout_id?: NodeJS.Timeout;
-  private start_ms?: number;
+  private timeout?: NodeJS.Timeout;
+  private timeStart?: number;
   private resolve?: (result: RawResult) => void;
 
   constructor(
-    private page: puppeteer.Page
+    private page: puppeteer.Page,
   ) {}
 
-  async installBindings() {
+  public async installBindings() {
     await this.page.exposeFunction("_wptrunner_finish_", this.finish.bind(this));
 
-    await this.page.exposeFunction("_wptrunner_click_", this.page.click.bind(this.page))
+    await this.page.exposeFunction("_wptrunner_click_", this.page.click.bind(this.page));
     await this.page.exposeFunction("_wptrunner_type_", this.page.type.bind(this.page));
   }
 
-  start(timeout: number, resolve: (result: RawResult) => void) {
+  public start(timeout: number, resolve: (result: RawResult) => void) {
     this.resolve = resolve;
-    this.timeout_id = setTimeout(() => {
+    this.timeout = setTimeout(() => {
       this.resolve!({ status: TestsStatus.TIMEOUT });
     }, timeout);
-    this.start_ms = Date.now();
+    this.timeStart = Date.now();
   }
 
-  finish(result: RawResult) {
-    if (this.timeout_id) {
-      clearTimeout(this.timeout_id);
+  public finish(result: RawResult) {
+    if (this.timeout) {
+      clearTimeout(this.timeout);
     }
-    if (this.start_ms) {
-      result.duration = Date.now() - this.start_ms;
+    if (this.timeStart) {
+      result.duration = Date.now() - this.timeStart;
     }
     logger.debug(result);
     if (this.resolve) {
@@ -152,7 +152,7 @@ async function runSingleTest(browser: puppeteer.Browser, url: string, externalTi
   });
 }
 
-function shouldRun(test: string, testPrefixes: Array<string>) : boolean {
+function shouldRun(test: string, testPrefixes: string[]): boolean {
   for (const testPrefix of testPrefixes) {
     if (test.startsWith(testPrefix)) {
       return true;
@@ -163,37 +163,39 @@ function shouldRun(test: string, testPrefixes: Array<string>) : boolean {
 
 async function run() {
   // TODO: Make this a command-line flag.
-  const wptDir = default_wpt_dir;
+  const wptDir = DEFAULT_WPT_DIR;
   // argv[0]=node, argv[1]=script
-  let testPrefixes = process.argv.slice(2);
+  const testPrefixes = process.argv.slice(2);
 
   if (testPrefixes.length === 0) {
-    testPrefixes.push('');
+    testPrefixes.push("");
   }
 
   for (let i = 0; i < testPrefixes.length; i++) {
-    if (!testPrefixes[i].startsWith('/')) {
-      testPrefixes[i] = '/' + testPrefixes[i];
+    if (!testPrefixes[i].startsWith("/")) {
+      testPrefixes[i] = "/" + testPrefixes[i];
     }
   }
 
-  const manifestReader = new ManifestReader(path.join(wptDir, 'MANIFEST.json'));
+  const manifestReader = new ManifestReader(path.join(wptDir, "MANIFEST.json"));
   const manifest = manifestReader.manifest;
 
+  // tslint:disable: object-literal-sort-keys
   const browser = await puppeteer.launch({
-    //executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+    // executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
     // Without this, serviceworker tests still fail because of HTTPS errors.
-    args: ['--ignore-certificate-errors'],
+    args: ["--ignore-certificate-errors"],
     headless: false,
     ignoreHTTPSErrors: true,
     // This only resizes the viewport, not the window.
     defaultViewport: {
         width: 800,
         height: 600,
-    }
+    },
   });
+  // tslint:enable: object-literal-sort-keys
 
-  const results: Array<Result> = [];
+  const results: Result[] = [];
 
   for (const [file, tests] of Object.entries(manifest.items.testharness)) {
     for (const [test, info] of tests) {
@@ -206,15 +208,15 @@ async function run() {
       if (info.testdriver) {
         // TODO: communicate!
       }
-      const use_https = test.includes('.https.') || test.includes('.serviceworker.');
+      const useHTTPS = test.includes(".https.") || test.includes(".serviceworker.");
       // These are the default port numbers.
-      const test_url = use_https ?
-        `https://web-platform.test:8443${test}`:
+      const testURL = useHTTPS ?
+        `https://web-platform.test:8443${test}` :
         `http://web-platform.test:8000${test}`;
       // TODO: verify the timeout & apply timeout multipler.
-      const externalTimeout = ExternalTimeoutMultiplier * (HarnessTimeout[info.timeout || 'normal']);
+      const externalTimeout = ExternalTimeoutMultiplier * (HarnessTimeout[info.timeout || "normal"]);
 
-      const rawResult = await runSingleTest(browser, test_url, externalTimeout);
+      const rawResult = await runSingleTest(browser, testURL, externalTimeout);
       const result = new Result(test, rawResult);
       logger.debug(result);
       results.push(result);
@@ -228,7 +230,7 @@ async function run() {
     }
   }
 
-  fs.writeFileSync('wptreport.json', JSON.stringify({"results": results}) + '\n');
+  fs.writeFileSync("wptreport.json", JSON.stringify({results}) + "\n");
   browser.close();
 }
 
