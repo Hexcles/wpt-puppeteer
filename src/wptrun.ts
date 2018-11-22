@@ -108,6 +108,17 @@ class RunnerController {
   private start_ms?: number;
   private resolve?: (result: RawResult) => void;
 
+  constructor(
+    private page: puppeteer.Page
+  ) {}
+
+  async installBindings() {
+    await this.page.exposeFunction("_wptrunner_finish_", this.finish.bind(this));
+
+    await this.page.exposeFunction("_wptrunner_click_", this.page.click.bind(this.page))
+    await this.page.exposeFunction("_wptrunner_type_", this.page.type.bind(this.page));
+  }
+
   start(timeout: number, resolve: (result: RawResult) => void) {
     this.resolve = resolve;
     this.timeout_id = setTimeout(() => {
@@ -132,9 +143,8 @@ class RunnerController {
 
 async function runSingleTest(browser: puppeteer.Browser, url: string, externalTimeout: number): Promise<RawResult> {
   const page = await getNewPage(browser);
-  const controller = new RunnerController;
-
-  await page.exposeFunction("_wptrunner_finish", controller.finish.bind(controller));
+  const controller = new RunnerController(page);
+  await controller.installBindings();
 
   return new Promise<RawResult>(async (resolve, reject) => {
     controller.start(externalTimeout, resolve);

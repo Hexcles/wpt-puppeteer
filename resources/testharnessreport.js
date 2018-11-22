@@ -14,8 +14,9 @@
  */
 
 (function() {
+"use strict";
 
-function dump_test_results(tests, status) {
+const dump_test_results = function(tests, status) {
     let test_results = tests.map(function(x) {
         return {name:x.name, status:x.status, message:x.message, stack:x.stack}
     });
@@ -24,7 +25,7 @@ function dump_test_results(tests, status) {
                 message: status.message,
                 stack: status.stack};
     console.log(data);
-    _wptrunner_finish(data);
+    window._wptrunner_finish_(data);
 }
 
 add_completion_callback(dump_test_results);
