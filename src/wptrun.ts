@@ -4,8 +4,8 @@ import * as path from "path";
 
 import puppeteer from "puppeteer";
 
+import { Actions, ActionSequence } from "./actions";
 import { ManifestReader } from "./manifest";
-import { ActionSequence, Actions } from "./actions";
 import { Logger } from "./util";
 const logger = new Logger("wptrun");
 
@@ -143,7 +143,7 @@ class RunnerController {
   }
 
   public actionSequence(sequence: ActionSequence[]): Promise<void> {
-    const actions= new Actions(sequence);
+    const actions = new Actions(sequence);
     actions.process();
     return actions.dispatch(this.page);
   }

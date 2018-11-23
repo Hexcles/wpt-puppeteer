@@ -182,6 +182,12 @@ function get_center_point(elem: Element): {x: number, y: number} {
 }
 
 class Action {
+  private static inViewport(page: Page, pos: {x: number, y: number}): boolean {
+    const viewport = page.viewport();
+    return ((pos.x >= 0 && pos.x <= viewport.width) &&
+            (pos.y >= 0 && pos.y <= viewport.height));
+  }
+
   constructor(
     public id: string,
     public actionItem: ActionItem,
@@ -240,12 +246,6 @@ class Action {
     return page.mouse.up({button: BUTTON_ID_TO_NAME[buttonID]});
   }
 
-  private static inViewport(page: Page, pos: {x: number, y: number}): boolean {
-    const viewport = page.viewport();
-    return ((pos.x >= 0 && pos.x <= viewport.width) &&
-            (pos.y >= 0 && pos.y <= viewport.height));
-  }
-
   private performPointerMoveAction(page: Page): Promise<void|void[]> {
     const item = this.actionItem as PointerMoveActionItem;
     const promises = [];
@@ -257,13 +257,13 @@ class Action {
     if (item.origin && item.origin !== "viewport") {
       getOrigin = page.$eval(item.origin, get_center_point);
     } else {
-      getOrigin = new Promise(resolve => resolve({x: 0, y: 0}));
+      getOrigin = new Promise((resolve) => resolve({x: 0, y: 0}));
     }
 
-    promises.push(getOrigin.then(origin => {
+    promises.push(getOrigin.then((origin) => {
       const target = {x: origin.x + item.x, y: origin.y + item.y};
       if (!Action.inViewport(page, origin) || !Action.inViewport(page, target)) {
-        throw "move target out of bounds";
+        throw new Error("move target out of bounds");
       }
       return page.mouse.move(target.x, target.y);
     }));
