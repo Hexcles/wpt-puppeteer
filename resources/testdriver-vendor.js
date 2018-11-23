@@ -42,6 +42,16 @@ window.test_driver_internal.send_keys = function(element, keys) {
 };
 
 window.test_driver_internal.action_sequence = function(actions) {
+    for (const action of actions) {
+        if (action.type !== "pointer") {
+            continue;
+        }
+        for (const a of action.actions) {
+            if (a.origin instanceof Element) {
+                a.origin = get_selector(a.origin);
+            }
+        }
+    }
     return window._wptrunner_action_sequence_(actions);
 };
 

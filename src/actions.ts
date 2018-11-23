@@ -1,5 +1,8 @@
 import { Page } from "puppeteer";
 
+import { Logger } from "./util";
+const logger = new Logger("actions");
+
 // Raw payload
 
 export interface ActionSequence {
@@ -66,10 +69,10 @@ interface PointerUpDownActionItem extends PointerActionItem {
 
 interface PointerMoveActionItem extends PointerActionItem {
   type: PointerActionSubtype.pointerMove;
-  duration: number;
-  origin: any;
+  duration?: number;
   x: number;
   y: number;
+  origin?: string;
 }
 
 // Implementation
@@ -80,7 +83,9 @@ export class Actions {
 
   constructor(
     private payload: ActionSequence[],
-  ) { }
+  ) {
+    logger.debug("Raw payload:", JSON.stringify(payload));
+  }
 
   public process() {
     for (const sequence of this.payload) {
@@ -101,6 +106,8 @@ export class Actions {
         i++;
       }
     }
+    logger.debug(this.sources);
+    logger.debug(this.actionsByTick);
   }
 
   public async dispatch(page: Page) {
@@ -155,6 +162,25 @@ const BUTTON_ID_TO_NAME: {[id: string]: ButtonName} = {
   2: ButtonName.right,
 };
 
+// This function is executed in browser context.
+function get_center_point(elem: Element): {x: number, y: number} {
+    const min = (a: number, b: number) => a < b ? a : b;
+    const max = (a: number, b: number) => a > b ? a : b;
+
+    const rect = elem.getClientRects()[0];
+    if (rect === undefined) {
+      return {x: -1, y: -1};
+    }
+    const left = max(0, rect.left);
+    const right = min(window.innerWidth, rect.right);
+    const top = max(0, rect.top);
+    const bottom = min(window.innerHeight, rect.bottom);
+    return {
+        x: Math.floor((left + right) / 2),
+        y: Math.floor((top + bottom) / 2),
+    };
+}
+
 class Action {
   constructor(
     public id: string,
@@ -162,8 +188,9 @@ class Action {
   ) { }
 
   public perform(source: Source, page: Page): Promise<void|void[]> {
+    logger.debug("Performing", this.actionItem);
     if (source.type === SourceType.none || this.actionItem.type === NullActionSubtype.pause) {
-      return this.performPauseAction(page);
+      return this.performNullAction(page);
     }
     if (source.type === SourceType.key) {
       return this.performKeyAction(page);
@@ -172,11 +199,15 @@ class Action {
     return this.performPointerAction(page);
   }
 
-  private performPauseAction(page: Page): Promise<void> {
-    const item = this.actionItem as NullActionItem | PointerMoveActionItem;
+  private performPauseAction(page: Page, duration: number): Promise<void> {
     return new Promise((resolve) => {
-      setTimeout(() => {resolve(); }, item.duration);
+      setTimeout(() => {resolve(); }, duration);
     });
+  }
+
+  private performNullAction(page: Page): Promise<void> {
+    const item = this.actionItem as NullActionItem;
+    return this.performPauseAction(page, item.duration);
   }
 
   private performKeyAction(page: Page): Promise<void>  {
@@ -192,13 +223,11 @@ class Action {
     if (this.actionItem.type === PointerActionSubtype.pointerCancel) {
       return new Promise((resolve, reject) => {reject("pointerCancel unsupported"); });
     }
+
     if (this.actionItem.type === PointerActionSubtype.pointerMove) {
-      const i = this.actionItem as PointerMoveActionItem;
-      return Promise.all([
-        page.mouse.move(i.x, i.y),
-        this.performPauseAction(page),
-      ]);
+      return this.performPointerMoveAction(page);
     }
+
     const item = this.actionItem as PointerUpDownActionItem;
     const buttonID = item.button;
     if (!(buttonID in BUTTON_ID_TO_NAME)) {
@@ -209,5 +238,39 @@ class Action {
     }
     // (item.type === PointerActionSubtype.pointerUp)
     return page.mouse.up({button: BUTTON_ID_TO_NAME[buttonID]});
+  }
+
+  private static inViewport(page: Page, pos: {x: number, y: number}): boolean {
+    const viewport = page.viewport();
+    return ((pos.x >= 0 && pos.x <= viewport.width) &&
+            (pos.y >= 0 && pos.y <= viewport.height));
+  }
+
+  private performPointerMoveAction(page: Page): Promise<void|void[]> {
+    const item = this.actionItem as PointerMoveActionItem;
+    const promises = [];
+    let getOrigin: Promise<{x: number, y: number}>;
+
+    if (item.origin === "pointer") {
+      return new Promise((resolve, reject) => {reject("pointer origin unsupported"); });
+    }
+    if (item.origin && item.origin !== "viewport") {
+      getOrigin = page.$eval(item.origin, get_center_point);
+    } else {
+      getOrigin = new Promise(resolve => resolve({x: 0, y: 0}));
+    }
+
+    promises.push(getOrigin.then(origin => {
+      const target = {x: origin.x + item.x, y: origin.y + item.y};
+      if (!Action.inViewport(page, origin) || !Action.inViewport(page, target)) {
+        throw "move target out of bounds";
+      }
+      return page.mouse.move(target.x, target.y);
+    }));
+
+    if (item.duration) {
+      promises.push(this.performPauseAction(page, item.duration));
+    }
+    return Promise.all(promises);
   }
 }

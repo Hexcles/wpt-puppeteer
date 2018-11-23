@@ -5,6 +5,7 @@ import * as path from "path";
 import puppeteer from "puppeteer";
 
 import { ManifestReader } from "./manifest";
+import { ActionSequence, Actions } from "./actions";
 import { Logger } from "./util";
 const logger = new Logger("wptrun");
 
@@ -114,6 +115,7 @@ class RunnerController {
 
   public async installBindings() {
     await this.page.exposeFunction("_wptrunner_finish_", this.finish.bind(this));
+    await this.page.exposeFunction("_wptrunner_action_sequence_", this.actionSequence.bind(this));
 
     await this.page.exposeFunction("_wptrunner_click_", this.page.click.bind(this.page));
     await this.page.exposeFunction("_wptrunner_type_", this.page.type.bind(this.page));
@@ -138,6 +140,12 @@ class RunnerController {
     if (this.resolve) {
       this.resolve(result);
     }
+  }
+
+  public actionSequence(sequence: ActionSequence[]): Promise<void> {
+    const actions= new Actions(sequence);
+    actions.process();
+    return actions.dispatch(this.page);
   }
 }
 
