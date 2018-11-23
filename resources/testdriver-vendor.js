@@ -42,9 +42,7 @@ window.test_driver_internal.send_keys = function(element, keys) {
 };
 
 window.test_driver_internal.action_sequence = function(actions) {
-    return new Promise(function(resolve, reject) {
-        reject("Not implemented");
-    });
+    return window._wptrunner_action_sequence_(actions);
 };
 
 })();
