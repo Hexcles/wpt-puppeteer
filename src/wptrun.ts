@@ -191,8 +191,15 @@ async function run() {
   // tslint:disable: object-literal-sort-keys
   const browser = await puppeteer.launch({
     // executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    // Without this, serviceworker tests still fail because of HTTPS errors.
-    args: ["--ignore-certificate-errors"],
+    args: [
+      "--enable-experimental-web-platform-features",
+      "--enable-features=RTCUnifiedPlanByDefaul",
+      "--autoplay-policy=no-user-gesture-required",
+      "--use-fake-ui-for-media-stream",
+      "--use-fake-device-for-media-stream",
+      // Without this, serviceworker tests still fail because of HTTPS errors.
+      "--ignore-certificate-errors",
+    ],
     headless: false,
     ignoreHTTPSErrors: true,
     // This only resizes the viewport, not the window.
