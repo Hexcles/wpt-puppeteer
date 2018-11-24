@@ -17,6 +17,7 @@ const HARNESS_TIMEOUT = {
   normal: 10000,
 };
 const BROWSER_ARGS = [
+  "--disable-popup-blocking",
   "--enable-experimental-web-platform-features",
   "--enable-features=RTCUnifiedPlanByDefaul",
   "--autoplay-policy=no-user-gesture-required",
@@ -26,12 +27,24 @@ const BROWSER_ARGS = [
   "--ignore-certificate-errors",
 ];
 
+function getCurrentPages(browser: puppeteer.Browser): Promise<puppeteer.Page[]> {
+  return new Promise((resolve) => {
+    browser.pages().then(( pages ) => resolve(pages))
+    .catch(() => {
+      // Most likely the test page just closed a page. Retry.
+      setTimeout(() => {
+        resolve(browser.pages());
+      }, 1000);
+    });
+  });
+}
+
 async function getNewPage(browser: puppeteer.Browser) {
-  const oldPages = await browser.pages();
-  // Create a new page before closing the old ones to prevent the browser from exiting.
-  const newPage = await browser.newPage();
-  await Promise.all(oldPages.map((p) => p.close()));
-  return newPage;
+  const oldPages = await getCurrentPages(browser);
+  // Keep the default blank page to prevent the browser from exiting.
+  await Promise.all(oldPages.slice(1).map((p) => p.close()));
+  // Create another new page in case the page closes itself.
+  return await browser.newPage();
 }
 
 async function runSingleTest(
@@ -127,7 +140,7 @@ async function run() {
     }
   }
 
-  browser.close();
+  await browser.close();
 
   // tslint:disable: object-literal-sort-keys
   browser = await puppeteer.launch({
@@ -177,7 +190,7 @@ async function run() {
     }
   }
 
-  browser.close();
+  await browser.close();
 
   fs.writeFileSync("wptreport.json", JSON.stringify({results}) + "\n");
 }

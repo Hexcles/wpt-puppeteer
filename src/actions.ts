@@ -227,7 +227,7 @@ class Action {
 
   private performPointerAction(page: Page): Promise<void|void[]>  {
     if (this.actionItem.type === PointerActionSubtype.pointerCancel) {
-      return new Promise((resolve, reject) => {reject("pointerCancel unsupported"); });
+      return new Promise((resolve, reject) => reject("pointerCancel unsupported"));
     }
 
     if (this.actionItem.type === PointerActionSubtype.pointerMove) {
@@ -237,7 +237,7 @@ class Action {
     const item = this.actionItem as PointerUpDownActionItem;
     const buttonID = item.button;
     if (!(buttonID in BUTTON_ID_TO_NAME)) {
-      return new Promise((resolve, reject) => {reject("unsupported button"); });
+      return new Promise((resolve, reject) => reject("unsupported button"));
     }
     if (item.type === PointerActionSubtype.pointerDown) {
       return page.mouse.down({button: BUTTON_ID_TO_NAME[buttonID]});
@@ -252,7 +252,7 @@ class Action {
     let getOrigin: Promise<{x: number, y: number}>;
 
     if (item.origin === "pointer") {
-      return new Promise((resolve, reject) => {reject("pointer origin unsupported"); });
+      return new Promise((resolve, reject) => reject("pointer origin unsupported"));
     }
     if (item.origin && item.origin !== "viewport") {
       getOrigin = page.$eval(item.origin, get_center_point);
