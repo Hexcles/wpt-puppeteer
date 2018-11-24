@@ -4,9 +4,9 @@ import * as path from "path";
 
 import puppeteer from "puppeteer";
 
-import { Executor, TestharnessExecutor, RefTestExecutor } from "./executors";
+import { Executor, RefTestExecutor, TestharnessExecutor } from "./executors";
 import { Extras as ManifestInfo, ManifestReader } from "./manifest";
-import { TestsStatus, TestStatus, Result } from "./results";
+import { Result, TestsStatus, TestStatus } from "./results";
 import { Logger } from "./util";
 const logger = new Logger("wptrun");
 
@@ -34,7 +34,11 @@ async function getNewPage(browser: puppeteer.Browser) {
   return newPage;
 }
 
-async function runSingleTest(browser: puppeteer.Browser, executor: typeof Executor, test: string, info: ManifestInfo): Promise<Result> {
+async function runSingleTest(
+  browser: puppeteer.Browser,
+  executor: typeof Executor,
+  test: string,
+  info: ManifestInfo): Promise<Result> {
   // TODO: verify the timeout & apply timeout multipler.
   const externalTimeout = EXT_TIMEOUT_MULTIPLIER * (HARNESS_TIMEOUT[info.timeout || "normal"]);
   const url = getTestURL(test);

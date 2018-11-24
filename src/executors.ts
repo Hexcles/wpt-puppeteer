@@ -16,7 +16,7 @@ export class Executor {
     protected externalTimeout: number,
   ) {}
 
-  public async installBindings() { } 
+  public async installBindings() { return; }
 
   public async installTestDriverBindings() {
     await this.page.exposeFunction("_wptrunner_action_sequence_", this.actionSequence.bind(this));
@@ -27,7 +27,7 @@ export class Executor {
 
   public runTest(url: string): Promise<Result> {
     return new Promise((resolve, reject) => reject("unimplemented"));
-  };
+  }
 
   public start(resolve: (result: Result) => void) {
     this.resolve = resolve;
@@ -79,7 +79,7 @@ declare function _wptrunner_screenshot_(): void;
 export class RefTestExecutor extends Executor {
   // This function is executed in browser context.
   public static waitForScreenshot() {
-    const root_wait = () => {
+    function root_wait() {
       if (!root.classList.contains("reftest-wait")) {
         observer.disconnect();
 
@@ -112,8 +112,8 @@ export class RefTestExecutor extends Executor {
   public async screenshot() {
     const image = await this.page.screenshot({encoding: "binary"});
     this.finish({
-      status: TestsStatus.OK,
       screenshot: image,
+      status: TestsStatus.OK,
     });
   }
 
