@@ -1,3 +1,5 @@
+import * as crypto from "crypto";
+
 // Raw JSON from testharness.js.
 // Must match testharness.js.
 export enum TestsStatus {
@@ -6,7 +8,7 @@ export enum TestsStatus {
   TIMEOUT = 2,
 }
 
-enum TestStatus {
+export enum TestStatus {
   PASS = 0,
   FAIL = 1,
   TIMEOUT = 2,
@@ -15,11 +17,12 @@ enum TestStatus {
 
 // Must match testharnessreport.js.
 export interface RawResult {
-  status: TestsStatus;
+  status: TestsStatus | TestStatus;
   message?: string | null;
   stack?: string;
   duration?: number;
   subtests?: RawSubtestResult[] | null;
+  screenshot?: Buffer;
 }
 
 interface RawSubtestResult {
@@ -35,11 +38,12 @@ interface RawSubtestResult {
 
 export class Result implements RawResult {
   public test: string;
-  public status: TestsStatus;
+  public status: TestsStatus | TestStatus;
   public message?: string;
   public duration?: number;
   public stack?: string;
   public subtests: SubtestResult[] = [];
+  public screenshot?: Buffer;
 
   constructor(test: string, results: RawResult) {
     this.test = test;
@@ -53,6 +57,9 @@ export class Result implements RawResult {
     if (results.stack) {
       this.stack = results.stack;
     }
+    if (results.screenshot) {
+      this.screenshot = results.screenshot;
+    }
     if (results.subtests) {
       for (const r of results.subtests) {
         this.subtests.push(new SubtestResult(r));
@@ -60,23 +67,37 @@ export class Result implements RawResult {
     }
   }
 
+  public getStatus(): string {
+    return this.screenshot ? TestStatus[this.status] : TestsStatus[this.status];
+  }
+
   public toJSON(): object {
     return {
       test: this.test,
-      status: TestsStatus[this.status],
+      status: this.getStatus(),
       message: this.message,
       duration: this.duration,
       subtests: this.subtests,
-      // Do not include stack in the report.
+      // Do not include stack, screenshot in the report.
     };
   }
 
   public toString(): string {
-    let message = `${TestsStatus[this.status]} ${this.test}`;
+    let message = `${this.getStatus()} ${this.test}`;
     if (this.message) {
       message += `: ${this.message}`;
     }
     return message;
+  }
+
+  public hashScreen(): string | number {
+    if (!this.screenshot) {
+      // NaN !== anything
+      return NaN;
+    }
+    const hash = crypto.createHash("sha1");
+    hash.update(this.screenshot);
+    return hash.digest("hex");
   }
 }
 
