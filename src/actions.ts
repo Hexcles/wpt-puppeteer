@@ -1,7 +1,7 @@
 import { Page } from "puppeteer";
 
 import { Logger } from "./util";
-const logger = new Logger("actions");
+const logger = new Logger("wptrun.actions");
 
 // Raw payload
 

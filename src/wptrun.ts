@@ -4,97 +4,27 @@ import * as path from "path";
 
 import puppeteer from "puppeteer";
 
-import { Actions, ActionSequence } from "./actions";
-import { ManifestReader } from "./manifest";
+import { Executor, TestharnessExecutor, RefTestExecutor } from "./executors";
+import { Extras as ManifestInfo, ManifestReader } from "./manifest";
+import { TestsStatus, TestStatus, Result } from "./results";
 import { Logger } from "./util";
 const logger = new Logger("wptrun");
 
 const DEFAULT_WPT_DIR = path.join(os.homedir(), "github", "wpt");
-
-// Must match testharness.js.
-enum TestsStatus {
-  OK = 0,
-  ERROR = 1,
-  TIMEOUT = 2,
-}
-
-enum TestStatus {
-  PASS = 0,
-  FAIL = 1,
-  TIMEOUT = 2,
-  NOTRUN = 3,
-}
-
-const HarnessTimeout = {
+const EXT_TIMEOUT_MULTIPLIER = 2;
+const HARNESS_TIMEOUT = {
   long: 60000,
   normal: 10000,
 };
-
-const ExternalTimeoutMultiplier = 2;
-
-// Must match testharnessreport.js.
-interface RawResult {
-  status: TestsStatus;
-  message?: string | null;
-  stack?: any | null;
-  duration?: number;
-  subtests?: RawSubtestResult[] | null;
-}
-
-interface RawSubtestResult {
-  name: string;
-  status: TestStatus;
-  message?: string | null;
-  stack?: any | null;
-}
-
-class Result implements RawResult {
-  public test: string;
-  public status: TestsStatus;
-  public message?: string;
-  public duration?: number;
-  // Do not include stack in report.
-  public subtests: SubtestResult[] = [];
-
-  constructor(test: string, results: RawResult) {
-    this.test = test;
-    this.status = results.status;
-    if (results.message) {
-      this.message = results.message;
-    }
-    if (results.duration) {
-      this.duration = results.duration;
-    }
-    if (results.subtests) {
-      for (const r of results.subtests) {
-        this.subtests.push(new SubtestResult(r));
-      }
-    }
-  }
-
-  public toJSON(): object {
-    return Object.assign({}, this, {status: TestsStatus[this.status]});
-  }
-}
-
-class SubtestResult implements RawSubtestResult {
-  public name: string;
-  public status: TestStatus;
-  public message?: string;
-  // Do not include stack in report.
-
-  constructor(result: RawSubtestResult) {
-    this.name = result.name;
-    this.status = result.status;
-    if (result.message) {
-      this.message = result.message;
-    }
-  }
-
-  public toJSON(): object {
-    return Object.assign({}, this, {status: TestStatus[this.status]});
-  }
-}
+const BROWSER_ARGS = [
+  "--enable-experimental-web-platform-features",
+  "--enable-features=RTCUnifiedPlanByDefaul",
+  "--autoplay-policy=no-user-gesture-required",
+  "--use-fake-ui-for-media-stream",
+  "--use-fake-device-for-media-stream",
+  // Without this, serviceworker tests still fail because of HTTPS errors.
+  "--ignore-certificate-errors",
+];
 
 async function getNewPage(browser: puppeteer.Browser) {
   const oldPages = await browser.pages();
@@ -104,60 +34,19 @@ async function getNewPage(browser: puppeteer.Browser) {
   return newPage;
 }
 
-class RunnerController {
-  private timeout?: NodeJS.Timeout;
-  private timeStart?: number;
-  private resolve?: (result: RawResult) => void;
+async function runSingleTest(browser: puppeteer.Browser, executor: typeof Executor, test: string, info: ManifestInfo): Promise<Result> {
+  // TODO: verify the timeout & apply timeout multipler.
+  const externalTimeout = EXT_TIMEOUT_MULTIPLIER * (HARNESS_TIMEOUT[info.timeout || "normal"]);
+  const url = getTestURL(test);
 
-  constructor(
-    private page: puppeteer.Page,
-  ) {}
-
-  public async installBindings() {
-    await this.page.exposeFunction("_wptrunner_finish_", this.finish.bind(this));
-    await this.page.exposeFunction("_wptrunner_action_sequence_", this.actionSequence.bind(this));
-
-    await this.page.exposeFunction("_wptrunner_click_", this.page.click.bind(this.page));
-    await this.page.exposeFunction("_wptrunner_type_", this.page.type.bind(this.page));
-  }
-
-  public start(timeout: number, resolve: (result: RawResult) => void) {
-    this.resolve = resolve;
-    this.timeout = setTimeout(() => {
-      this.resolve!({ status: TestsStatus.TIMEOUT });
-    }, timeout);
-    this.timeStart = Date.now();
-  }
-
-  public finish(result: RawResult) {
-    if (this.timeout) {
-      clearTimeout(this.timeout);
-    }
-    if (this.timeStart) {
-      result.duration = Date.now() - this.timeStart;
-    }
-    logger.debug(result);
-    if (this.resolve) {
-      this.resolve(result);
-    }
-  }
-
-  public actionSequence(sequence: ActionSequence[]): Promise<void> {
-    const actions = new Actions(sequence);
-    actions.process();
-    return actions.dispatch(this.page);
-  }
-}
-
-async function runSingleTest(browser: puppeteer.Browser, url: string, externalTimeout: number): Promise<RawResult> {
   const page = await getNewPage(browser);
-  const controller = new RunnerController(page);
+  const controller = new executor(page, test, externalTimeout);
   await controller.installBindings();
+  if (info.testdriver) {
+    await controller.installTestDriverBindings();
+  }
 
-  return new Promise<RawResult>(async (resolve, reject) => {
-    controller.start(externalTimeout, resolve);
-    page.goto(url);
-  });
+  return controller.runTest(url);
 }
 
 function shouldRun(test: string, testPrefixes: string[]): boolean {
@@ -167,6 +56,17 @@ function shouldRun(test: string, testPrefixes: string[]): boolean {
     }
   }
   return false;
+}
+
+function getTestURL(test: string): string {
+  if (test === "about:blank") {
+    return test;
+  }
+  const useHTTPS = test.includes(".https.") || test.includes(".serviceworker.");
+  // These are the default port numbers.
+  return  useHTTPS ?
+    `https://web-platform.test:8443${test}` :
+    `http://web-platform.test:8000${test}`;
 }
 
 async function run() {
@@ -189,17 +89,9 @@ async function run() {
   const manifest = manifestReader.manifest;
 
   // tslint:disable: object-literal-sort-keys
-  const browser = await puppeteer.launch({
+  let browser = await puppeteer.launch({
     // executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    args: [
-      "--enable-experimental-web-platform-features",
-      "--enable-features=RTCUnifiedPlanByDefaul",
-      "--autoplay-policy=no-user-gesture-required",
-      "--use-fake-ui-for-media-stream",
-      "--use-fake-device-for-media-stream",
-      // Without this, serviceworker tests still fail because of HTTPS errors.
-      "--ignore-certificate-errors",
-    ],
+    args: BROWSER_ARGS,
     headless: false,
     ignoreHTTPSErrors: true,
     // This only resizes the viewport, not the window.
@@ -214,39 +106,76 @@ async function run() {
 
   for (const [file, tests] of Object.entries(manifest.items.testharness)) {
     for (const [test, info] of tests) {
-      // Decide whether to run the test.
       if (info.jsshell || !shouldRun(test, testPrefixes)) {
         continue;
       }
 
-      // Setup
-      if (info.testdriver) {
-        // TODO: communicate!
-      }
-      const useHTTPS = test.includes(".https.") || test.includes(".serviceworker.");
-      // These are the default port numbers.
-      const testURL = useHTTPS ?
-        `https://web-platform.test:8443${test}` :
-        `http://web-platform.test:8000${test}`;
-      // TODO: verify the timeout & apply timeout multipler.
-      const externalTimeout = ExternalTimeoutMultiplier * (HarnessTimeout[info.timeout || "normal"]);
-
-      const rawResult = await runSingleTest(browser, testURL, externalTimeout);
-      const result = new Result(test, rawResult);
+      const result: Result = await runSingleTest(browser, TestharnessExecutor, test, info);
       logger.debug(result);
       results.push(result);
 
-      logger.log(`${TestsStatus[result.status]} ${result.test}`);
+      logger.log(result.toString());
       if (result.subtests) {
         for (const subtest of result.subtests) {
-          logger.log(`  ${TestStatus[subtest.status]} ${subtest.name}`);
+          logger.log("  " + subtest.toString());
         }
       }
     }
   }
 
-  fs.writeFileSync("wptreport.json", JSON.stringify({results}) + "\n");
   browser.close();
+
+  // tslint:disable: object-literal-sort-keys
+  browser = await puppeteer.launch({
+    args: BROWSER_ARGS,
+    headless: false,
+    ignoreHTTPSErrors: true,
+    // Reftests use a different viewport size.
+    defaultViewport: {
+        width: 600,
+        height: 600,
+    },
+  });
+  // tslint:enable: object-literal-sort-keys
+
+  for (const [file, tests] of Object.entries(manifest.items.reftest)) {
+    for (const [test, references, info] of tests) {
+      if (!shouldRun(test, testPrefixes) || references.length === 0) {
+        continue;
+      }
+
+      const testResult: Result = await runSingleTest(browser, RefTestExecutor, test, info);
+      logger.debug(testResult);
+
+      if (testResult.status === TestsStatus.OK) {
+        testResult.status = TestStatus.FAIL;
+        // TODO: Support reference chain.
+        for (const [ref, condition] of references) {
+          const refResult: Result = await runSingleTest(browser, RefTestExecutor, ref, info);
+          logger.debug(refResult);
+
+          if (refResult.status === TestsStatus.TIMEOUT) {
+            testResult.status = TestsStatus.TIMEOUT;
+            testResult.message = "ref timeout";
+            break;
+          }
+
+          const passed = (condition === "==") === (refResult.hashScreen() === testResult.hashScreen());
+          if (passed) {
+            testResult.status = TestStatus.PASS;
+            break;
+          }
+        }
+      }
+
+      results.push(testResult);
+      logger.log(testResult.toString());
+    }
+  }
+
+  browser.close();
+
+  fs.writeFileSync("wptreport.json", JSON.stringify({results}) + "\n");
 }
 
 run();

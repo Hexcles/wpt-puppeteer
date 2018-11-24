@@ -20,7 +20,7 @@ type URLItem = [string /* url */, Extras];
 type RefTestItem = [string /* url */, Reference[], Extras];
 type Reference = [string /* ref_url */, string /* condition */];
 
-interface Extras {
+export interface Extras {
   [key: string]: any;
   timeout?: Timeout;
   testdriver?: boolean;
