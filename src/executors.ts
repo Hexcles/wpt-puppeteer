@@ -31,8 +31,11 @@ export class Executor {
 
   public start(resolve: (result: Result) => void) {
     this.resolve = resolve;
+    this.page.on("error", () => {
+      this.finish({ status: TestsStatus.CRASH });
+    });
     this.timeout = setTimeout(() => {
-      this.resolve!(new Result(this.test, { status: TestsStatus.TIMEOUT }));
+      this.finish({ status: TestsStatus.TIMEOUT });
     }, this.externalTimeout);
     this.timeStart = Date.now();
   }

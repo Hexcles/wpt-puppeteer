@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 // Raw JSON from testharness.js.
 // Must match testharness.js.
 export enum TestsStatus {
+  CRASH = -1,
   OK = 0,
   ERROR = 1,
   TIMEOUT = 2,
