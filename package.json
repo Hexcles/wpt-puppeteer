@@ -4,10 +4,12 @@
   "description": "Run WPT with Puppeteer",
   "main": "lib/wptrun.js",
   "dependencies": {
+    "argparse": "^1.0.10",
     "debug": "^4.1.0",
     "puppeteer": "^1.9.0"
   },
   "devDependencies": {
+    "@types/argparse": "^1.0.35",
     "@types/css-font-loading-module": "0.0.2",
     "@types/debug": "0.0.31",
     "@types/node": "^10.12.0",

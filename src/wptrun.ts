@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 
 import puppeteer from "puppeteer";
+import { ArgumentParser } from "argparse";
 
 import { Executor, RefTestExecutor, TestharnessExecutor } from "./executors";
 import { Extras as ManifestInfo, ManifestReader } from "./manifest";
@@ -86,11 +87,11 @@ function getTestURL(test: string): string {
     `http://web-platform.test:8000${test}`;
 }
 
-async function run() {
-  // TODO: Make this a command-line flag.
-  const wptDir = DEFAULT_WPT_DIR;
-  // argv[0]=node, argv[1]=script
-  const testPrefixes = process.argv.slice(2);
+async function run(args: {[key: string]: any}) {
+  const wptDir = args.wpt_dir as string;
+  const wptReport = args.log_wptreport as string;
+  const headless = args.headless as boolean;
+  const testPrefixes = args.TEST as string[];
 
   if (testPrefixes.length === 0) {
     testPrefixes.push("");
@@ -109,7 +110,7 @@ async function run() {
   let browser = await puppeteer.launch({
     // executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
     args: BROWSER_ARGS,
-    headless: false,
+    headless: headless,
     ignoreHTTPSErrors: true,
     // This only resizes the viewport, not the window.
     defaultViewport: {
@@ -145,7 +146,7 @@ async function run() {
   // tslint:disable: object-literal-sort-keys
   browser = await puppeteer.launch({
     args: BROWSER_ARGS,
-    headless: false,
+    headless: headless,
     ignoreHTTPSErrors: true,
     // Reftests use a different viewport size.
     defaultViewport: {
@@ -192,7 +193,33 @@ async function run() {
 
   await browser.close();
 
-  fs.writeFileSync("wptreport.json", JSON.stringify({results}) + "\n");
+  fs.writeFileSync(wptReport, JSON.stringify({results}) + "\n");
 }
 
-run();
+function main() {
+  let parser = new ArgumentParser({
+    addHelp: true,
+    description: "Run WPT on Chrome using puppeteer.",
+  });
+  parser.addArgument("--wpt-dir", {
+    defaultValue: DEFAULT_WPT_DIR,
+    help: `Path to WPT checkout (default: ${DEFAULT_WPT_DIR})`,
+  });
+  parser.addArgument("--log-wptreport", {
+    defaultValue: "wptreport.json",
+    help: "Log wptreport.json to this path (default: wptreport.json).",
+  });
+  parser.addArgument("--headless", {
+    defaultValue: false,
+    action: "storeTrue",
+    help: "Run in headless mode (default: false).",
+  });
+  parser.addArgument("TEST", {
+    nargs: "*",
+    help: "Test prefixes to run",
+  });
+  let args = parser.parseArgs();
+  run(args);
+}
+
+main();
