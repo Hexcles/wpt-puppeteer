@@ -12,5 +12,5 @@ Then in another terminal, build and run the test runner:
 ```bash
 npm install
 npm run build
-npm lib/wptrun.js [tests you want to run...]
+node lib/wptrun.js [tests you want to run...]
 ```
