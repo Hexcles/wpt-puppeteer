@@ -2,8 +2,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import puppeteer from "puppeteer";
 import { ArgumentParser } from "argparse";
+import puppeteer from "puppeteer";
 
 import { Executor, RefTestExecutor, TestharnessExecutor } from "./executors";
 import { Extras as ManifestInfo, ManifestReader } from "./manifest";
@@ -110,7 +110,7 @@ async function run(args: {[key: string]: any}) {
   let browser = await puppeteer.launch({
     // executablePath: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
     args: BROWSER_ARGS,
-    headless: headless,
+    headless,
     ignoreHTTPSErrors: true,
     // This only resizes the viewport, not the window.
     defaultViewport: {
@@ -146,7 +146,7 @@ async function run(args: {[key: string]: any}) {
   // tslint:disable: object-literal-sort-keys
   browser = await puppeteer.launch({
     args: BROWSER_ARGS,
-    headless: headless,
+    headless,
     ignoreHTTPSErrors: true,
     // Reftests use a different viewport size.
     defaultViewport: {
@@ -197,7 +197,7 @@ async function run(args: {[key: string]: any}) {
 }
 
 function main() {
-  let parser = new ArgumentParser({
+  const parser = new ArgumentParser({
     addHelp: true,
     description: "Run WPT on Chrome using puppeteer.",
   });
@@ -210,15 +210,15 @@ function main() {
     help: "Log wptreport.json to this path (default: wptreport.json).",
   });
   parser.addArgument("--headless", {
-    defaultValue: false,
     action: "storeTrue",
+    defaultValue: false,
     help: "Run in headless mode (default: false).",
   });
   parser.addArgument("TEST", {
-    nargs: "*",
     help: "Test prefixes to run",
+    nargs: "*",
   });
-  let args = parser.parseArgs();
+  const args = parser.parseArgs();
   run(args);
 }
 
