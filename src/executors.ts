@@ -72,7 +72,9 @@ export class TestharnessExecutor extends Executor {
   public runTest(url: string) {
     return new Promise<Result>((resolve) => {
       this.start(resolve);
-      this.page.goto(url);
+      this.page.goto(url).catch(() => {
+        this.finish({ status: TestsStatus.CRASH });
+      });
     });
   }
 }
@@ -125,6 +127,8 @@ export class RefTestExecutor extends Executor {
       this.start(resolve);
       this.page.goto(url).then(() => {
         this.page.evaluate(RefTestExecutor.waitForScreenshot);
+      }).catch(() => {
+        this.finish({ status: TestsStatus.CRASH });
       });
     });
   }
