@@ -207,7 +207,7 @@ class Action {
 
   private performPauseAction(page: Page, duration: number): Promise<void> {
     return new Promise((resolve) => {
-      setTimeout(() => {resolve(); }, duration);
+      setTimeout(resolve, duration);
     });
   }
 
