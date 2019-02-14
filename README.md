@@ -4,7 +4,7 @@ Assume your WPT checkout is at `~/github/wpt`.
 First, start `wptserve` with the aliases override from this repo:
 
 ```bash
-~/github/wpt wpt serve --alias_file ./wptserve.aliases
+~/github/wpt/wpt serve --alias_file ./wptserve.aliases
 ```
 
 Then in another terminal, build and run the test runner:
