@@ -132,10 +132,10 @@ class Runner {
   }
 
   private async restartBrowser(viewport?: puppeteer.Viewport) {
-    logger.debug("Restarting browser...")
+    logger.debug("Restarting browser...");
     await this.browser.close();
     this.browser = await Runner.launchBrowser(this.headless, viewport);
-    logger.debug("Browser restarted.")
+    logger.debug("Browser restarted.");
   }
 
   private getCurrentPages(): Promise<puppeteer.Page[]> {

@@ -36,7 +36,7 @@ export class Executor {
     });
     this.timeout = setTimeout(() => {
       this.finish({ status: TestsStatus.TIMEOUT });
-    }, this.externalTimeout)
+    }, this.externalTimeout);
     this.timeStart = Date.now();
   }
 
