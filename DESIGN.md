@@ -88,6 +88,11 @@ automation usable in both testharness tests and reftests. `testdriver-vendor.js`
 APIs by calling the bindings exposed by the runner. The `actions` module of the runner essentially
 implements the [Actions API](https://w3c.github.io/webdriver/#actions) in the WebDriver spec.
 
+See these [two][s1] [slides][s2] for comparison flowcharts.
+
+[s1]: https://docs.google.com/presentation/d/1ltDm9ntSXWf-N7ynXyZHRGKHQUGEzxkcyodqxl1diwc/edit#slide=id.g48421be0e0_0_16
+[s2]: https://docs.google.com/presentation/d/1ltDm9ntSXWf-N7ynXyZHRGKHQUGEzxkcyodqxl1diwc/edit#slide=id.g48421be0e0_0_41
+
 ## Results
 
 The experiment ran the full WPT at the same revision locally on a high-performance workstation
