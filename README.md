@@ -14,3 +14,7 @@ npm install
 npm run build
 node lib/wptrun.js [tests you want to run...]
 ```
+
+## Design
+
+Please refer to the [design doc](DESIGN.md).
