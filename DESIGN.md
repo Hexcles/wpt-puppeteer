@@ -65,9 +65,9 @@ following modules:
 The control of test running is centered around a two-way communication channel provided by two
 Puppeteer APIs:
 
-* `Page.evaluate` allows the test runner to run a function in the browser and get the return
+* [`Page.evaluate`][a1] allows the test runner to run a function in the browser and get the return
   value (i.e. runner -> browser).
-* `Page.exposeFunction` exposes a function in the test runner to the browser to allow browser
+* [`Page.exposeFunction`][a2] exposes a function in the test runner to the browser to allow browser
   -> runner communication.
 
 The two APIs are asynchronous (Promise-based), which avoids the complex polling setup in the
@@ -80,6 +80,9 @@ For testharness tests, the runner installs some private bindings to the test pag
 `testharnessreport.js` override to report test results. When the runner needs to get information
 about the test page (e.g. to know when to take reftest screenshots), it evaluates a function in the
 test page and handles the returned promise.
+
+[a1]: https://pptr.dev/#?product=Puppeteer&version=v1.10.0&show=api-pageevaluatepagefunction-args
+[a2]: https://pptr.dev/#?product=Puppeteer&version=v1.10.0&show=api-pageexposefunctionname-puppeteerfunction
 
 ### testdriver.js
 
