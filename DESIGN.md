@@ -126,8 +126,12 @@ Caveat: wpt-puppeteer missed a few directories due to my user error.
 
 ## Takeaways
 
-* Typescript is awesome!
+* To reiterate the conclusion in the foreword, it was proven hard to integrate a Node.js component
+  into the upstream WPT tools and it would take significantly more effort to replicate the rest of
+  the functionalities of `wptrunner`, so the team decided to pursue `ExecutorCDP` instead.
 * Puppeteer is indeed pleasant to use.
     * Its APIs are ergonomic.
     * Using JavaScript on both sides make lots of things easier, more natural.
+    * If `wptrunner` is refactored to allow heterogeneous executors in the future, it'll be easy to
+      write a Puppeteer executor for it.
 
